@@ -17,12 +17,13 @@ function cleanHtml(text = '') {
     .trim();
 }
 
-async function listProducts({ page = 1, limit = 10, search = '' }) {
+async function listProducts({ page = 1, limit = 10, search = '', category = null }) {
   const response = await woo.get('/products', {
     params: {
       per_page: limit,
       page,
       search: search || undefined,
+      category: category || undefined, // 👈 Woo espera ID de categoría
     },
   });
 
