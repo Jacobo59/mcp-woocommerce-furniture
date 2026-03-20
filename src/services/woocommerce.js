@@ -151,11 +151,27 @@ async function findCategoryIdByName(name) {
   return null;
 }
 
-async function resolveCategory(category) {
-  if (!category) return undefined;
+function parseCategoryInput(category) {
+  if (category === undefined || category === null || category === "") {
+    return [];
+  }
 
+  if (Array.isArray(category)) {
+    return category
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return String(category)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function resolveSingleCategory(category) {
   if (isNumeric(category)) {
-    return Number(category);
+    return String(Number(category));
   }
 
   const resolvedId = await findCategoryIdByName(category);
@@ -166,11 +182,31 @@ async function resolveCategory(category) {
     throw error;
   }
 
-  return resolvedId;
+  return String(resolvedId);
+}
+
+async function resolveCategories(category) {
+  const categoryList = parseCategoryInput(category);
+
+  if (!categoryList.length) {
+    return undefined;
+  }
+
+  const resolved = [];
+
+  for (const item of categoryList) {
+    const resolvedId = await resolveSingleCategory(item);
+
+    if (!resolved.includes(resolvedId)) {
+      resolved.push(resolvedId);
+    }
+  }
+
+  return resolved.join(",");
 }
 
 async function listProducts({ page = 1, limit = 10, search, category }) {
-  const resolvedCategory = await resolveCategory(category);
+  const resolvedCategory = await resolveCategories(category);
 
   const params = {
     page,
