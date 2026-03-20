@@ -13,12 +13,16 @@ router.get("/list-products", async (req, res) => {
     const limit = Number(req.query.limit || 10);
     const search = req.query.search;
     const category = req.query.category;
+    const min_price = req.query.min_price;
+    const max_price = req.query.max_price;
 
     const data = await listProducts({
       page,
       limit,
       search,
-      category
+      category,
+      min_price,
+      max_price
     });
 
     return res.json({
