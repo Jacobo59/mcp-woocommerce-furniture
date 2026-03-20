@@ -14,6 +14,7 @@ const ORDERBY_MAP = {
   title: "title",
   id: "id",
   menu_order: "menu_order",
+  popularity: "popularity",
 };
 
 const ORDER_MAP = {
@@ -34,102 +35,26 @@ function decodeHtmlEntities(text = "") {
     .replace(/&gt;/gi, ">");
 }
 
-function normalizeText(text = "") {
-  return decodeHtmlEntities(String(text))
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/\band\b/gi, " and ")
-    .replace(/[^a-zA-Z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
 function normalizeProduct(product) {
   return {
     id: product.id,
     name: decodeHtmlEntities(product.name || ""),
     slug: product.slug || "",
     permalink: product.permalink || "",
-    type: product.type || "",
-    status: product.status || "",
-    featured: Boolean(product.featured),
-    catalog_visibility: product.catalog_visibility || "",
-    short_description: stripHtml(product.short_description || ""),
-    description: stripHtml(product.description || ""),
-    sku: product.sku || "",
     price: product.price || "",
-    regular_price: product.regular_price || "",
-    sale_price: product.sale_price || "",
-    on_sale: Boolean(product.on_sale),
-    stock_status: product.stock_status || "",
-    stock_quantity: product.stock_quantity,
-    categories: Array.isArray(product.categories)
-      ? product.categories.map((category) => ({
-          id: category.id,
-          name: decodeHtmlEntities(category.name || ""),
-          slug: category.slug || "",
-        }))
-      : [],
-    images: Array.isArray(product.images)
-      ? product.images.map((image) => ({
-          id: image.id,
-          src: image.src,
-          name: image.name || "",
-          alt: image.alt || "",
-        }))
-      : [],
+    total_sales: product.total_sales || 0,
+    categories: product.categories || [],
+    images: product.images || [],
   };
-}
-
-function normalizeCategory(category) {
-  return {
-    id: category.id,
-    name: decodeHtmlEntities(category.name || ""),
-    slug: category.slug || "",
-    count: category.count || 0,
-    parent: category.parent || 0,
-    description: stripHtml(category.description || ""),
-  };
-}
-
-function parsePositiveInt(value, fallback) {
-  if (value === undefined || value === null || value === "") return fallback;
-
-  const parsed = Number.parseInt(value, 10);
-
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    const error = new Error(`Invalid value: ${value}`);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  return parsed;
-}
-
-function parsePrice(value, fieldName) {
-  if (value === undefined || value === null || value === "") return undefined;
-
-  const parsed = Number(value);
-
-  if (Number.isNaN(parsed) || parsed < 0) {
-    const error = new Error(`${fieldName} must be a valid number >= 0`);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  return parsed;
 }
 
 function parseOrderby(value) {
-  if (value === undefined || value === null || value === "") return undefined;
-
-  const normalized = String(value).trim().toLowerCase();
+  if (!value) return undefined;
+  const normalized = String(value).toLowerCase();
 
   if (!ORDERBY_MAP[normalized]) {
     const error = new Error(
-      "orderby must be one of: price, date, title, id, menu_order"
+      "orderby must be one of: price, date, title, id, menu_order, popularity"
     );
     error.statusCode = 400;
     throw error;
@@ -139,9 +64,8 @@ function parseOrderby(value) {
 }
 
 function parseOrder(value) {
-  if (value === undefined || value === null || value === "") return undefined;
-
-  const normalized = String(value).trim().toLowerCase();
+  if (!value) return undefined;
+  const normalized = String(value).toLowerCase();
 
   if (!ORDER_MAP[normalized]) {
     const error = new Error("order must be one of: asc, desc");
@@ -152,114 +76,47 @@ function parseOrder(value) {
   return ORDER_MAP[normalized];
 }
 
-async function getAllCategories() {
-  const categories = [];
-  let page = 1;
-  let totalPages = 1;
+function fallbackSortByPopularity(items, order) {
+  return items.sort((a, b) => {
+    const aSales = a.total_sales || 0;
+    const bSales = b.total_sales || 0;
 
-  do {
-    const response = await api.get("products/categories", {
-      per_page: 100,
-      page,
-    });
-
-    categories.push(...response.data);
-    totalPages = Number(response.headers["x-wp-totalpages"] || 1);
-    page += 1;
-  } while (page <= totalPages);
-
-  return categories;
-}
-
-async function resolveCategoryIds(categoryInput) {
-  if (!categoryInput) return [];
-
-  const rawValues = Array.isArray(categoryInput)
-    ? categoryInput
-    : String(categoryInput)
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean);
-
-  if (!rawValues.length) return [];
-
-  const allCategories = await getAllCategories();
-  const resolvedIds = new Set();
-
-  for (const rawValue of rawValues) {
-    if (/^\d+$/.test(rawValue)) {
-      resolvedIds.add(Number(rawValue));
-      continue;
-    }
-
-    const normalizedSearch = normalizeText(rawValue);
-
-    const exactMatch = allCategories.find(
-      (category) =>
-        normalizeText(category.name) === normalizedSearch ||
-        normalizeText(category.slug) === normalizedSearch
-    );
-
-    if (exactMatch) {
-      resolvedIds.add(exactMatch.id);
-      continue;
-    }
-
-    const partialMatches = allCategories.filter((category) => {
-      const normalizedName = normalizeText(category.name);
-      const normalizedSlug = normalizeText(category.slug);
-
-      return (
-        normalizedName.includes(normalizedSearch) ||
-        normalizedSlug.includes(normalizedSearch) ||
-        normalizedSearch.includes(normalizedName)
-      );
-    });
-
-    for (const match of partialMatches) {
-      resolvedIds.add(match.id);
-    }
-  }
-
-  return Array.from(resolvedIds);
+    return order === "asc"
+      ? aSales - bSales
+      : bSales - aSales;
+  });
 }
 
 async function listProducts(query = {}) {
-  const page = parsePositiveInt(query.page, 1);
-  const limit = parsePositiveInt(query.limit, 10);
-  const search = query.search ? String(query.search).trim() : undefined;
-
-  const minPrice = parsePrice(query.min_price, "min_price");
-  const maxPrice = parsePrice(query.max_price, "max_price");
-
-  if (
-    minPrice !== undefined &&
-    maxPrice !== undefined &&
-    minPrice > maxPrice
-  ) {
-    const error = new Error("min_price cannot be greater than max_price");
-    error.statusCode = 400;
-    throw error;
-  }
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 10;
 
   const orderby = parseOrderby(query.orderby);
-  const order = parseOrder(query.order);
-
-  const categoryIds = await resolveCategoryIds(query.category);
+  const order = parseOrder(query.order) || "desc";
 
   const params = {
     page,
     per_page: limit,
   };
 
-  if (search) params.search = search;
-  if (categoryIds.length > 0) params.category = categoryIds.join(",");
-  if (minPrice !== undefined) params.min_price = String(minPrice);
-  if (maxPrice !== undefined) params.max_price = String(maxPrice);
   if (orderby) params.orderby = orderby;
   if (order) params.order = order;
 
   const response = await api.get("products", params);
+
+  let items = response.data.map(normalizeProduct);
+
+  // 🔥 Fallback inteligente si Woo falla con popularity
+  if (orderby === "popularity") {
+    const isSorted = items.every((item, i, arr) => {
+      if (i === 0) return true;
+      return arr[i - 1].total_sales >= item.total_sales;
+    });
+
+    if (!isSorted) {
+      items = fallbackSortByPopularity(items, order);
+    }
+  }
 
   return {
     page,
@@ -267,26 +124,21 @@ async function listProducts(query = {}) {
     total: Number(response.headers["x-wp-total"] || 0),
     total_pages: Number(response.headers["x-wp-totalpages"] || 0),
     filters: {
-      search: search || null,
-      category_ids: categoryIds,
-      min_price: minPrice ?? null,
-      max_price: maxPrice ?? null,
       orderby: orderby || null,
       order: order || null,
     },
-    items: response.data.map(normalizeProduct),
+    items,
   };
 }
 
 async function getProductById(id) {
-  const productId = parsePositiveInt(id);
-  const response = await api.get(`products/${productId}`);
+  const response = await api.get(`products/${id}`);
   return normalizeProduct(response.data);
 }
 
 async function listCategories() {
-  const categories = await getAllCategories();
-  return categories.map(normalizeCategory);
+  const response = await api.get("products/categories");
+  return response.data;
 }
 
 module.exports = {
