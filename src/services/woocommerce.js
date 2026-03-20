@@ -4,6 +4,8 @@ const config = require("../config/env");
 // --------------------
 // AXIOS CLIENT
 // --------------------
+// Mantengo la misma configuración base y la misma estructura.
+// Solo añadimos control de fallos/reintentos sin tocar env.js.
 const woo = axios.create({
   baseURL: `${config.woo.url}/wp-json/wc/v3`,
   auth: {
@@ -12,6 +14,102 @@ const woo = axios.create({
   },
   timeout: 15000
 });
+
+// --------------------
+// RETRY / RESILIENCIA
+// --------------------
+// Reintentos cortos y solo para errores transitorios.
+// No tocamos contratos públicos del servicio.
+const WOO_MAX_RETRIES = 2;
+const WOO_RETRY_DELAY_MS = 400;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Decide si el error merece reintento.
+// Cubrimos timeouts, cortes de red, rate limit y errores 5xx.
+function isRetriableError(error) {
+  if (!error) return false;
+
+  // Timeout axios
+  if (error.code === "ECONNABORTED") return true;
+
+  // Fallos típicos de red/DNS/socket
+  if (
+    error.code === "ETIMEDOUT" ||
+    error.code === "ECONNRESET" ||
+    error.code === "ENOTFOUND" ||
+    error.code === "EAI_AGAIN" ||
+    error.code === "ECONNREFUSED"
+  ) {
+    return true;
+  }
+
+  // Si no hubo respuesta del servidor, también es reintentable
+  if (!error.response) return true;
+
+  const status = error.response.status;
+
+  // 408 timeout, 429 rate limit, o cualquier 5xx
+  return status === 408 || status === 429 || status >= 500;
+}
+
+// Mapea errores de Woo a errores controlados para tus rutas.
+// Mantiene compatibilidad con error.statusCode.
+function mapWooError(error) {
+  // Si Woo respondió con status, preservamos la semántica útil.
+  if (error.response) {
+    const status = error.response.status;
+    const remoteMessage =
+      error.response.data?.message ||
+      error.response.data?.code ||
+      error.message ||
+      "WooCommerce request failed";
+
+    // 404 real: lo devolvemos como 404
+    if (status === 404) {
+      const err = new Error(remoteMessage);
+      err.statusCode = 404;
+      return err;
+    }
+
+    // 4xx de Woo: los devolvemos tal cual
+    if (status >= 400 && status < 500) {
+      const err = new Error(remoteMessage);
+      err.statusCode = status;
+      return err;
+    }
+  }
+
+  // Timeout explícito
+  if (error.code === "ECONNABORTED") {
+    const err = new Error("WooCommerce timeout");
+    err.statusCode = 504;
+    return err;
+  }
+
+  // Todo lo demás: gateway error controlado
+  const err = new Error("WooCommerce service unavailable");
+  err.statusCode = 502;
+  return err;
+}
+
+// Wrapper único para llamadas a Woo.
+// Así evitamos duplicar lógica y no tocamos el resto del diseño.
+async function wooRequest(requestConfig, retryCount = 0) {
+  try {
+    return await woo(requestConfig);
+  } catch (error) {
+    if (isRetriableError(error) && retryCount < WOO_MAX_RETRIES) {
+      // Backoff incremental simple
+      await sleep(WOO_RETRY_DELAY_MS * (retryCount + 1));
+      return wooRequest(requestConfig, retryCount + 1);
+    }
+
+    throw mapWooError(error);
+  }
+}
 
 // --------------------
 // CACHE (TTL)
@@ -170,7 +268,11 @@ async function getAllCategories() {
   let totalPages = 1;
 
   do {
-    const res = await woo.get("/products/categories", {
+    // Antes: woo.get(...)
+    // Ahora: pasa por wooRequest para tener retry + timeout controlado
+    const res = await wooRequest({
+      method: "GET",
+      url: "/products/categories",
       params: { page, per_page: perPage, hide_empty: false }
     });
 
@@ -296,7 +398,13 @@ async function listProducts(query = {}) {
   if (orderby) params.orderby = orderby;
   if (order) params.order = order;
 
-  const res = await woo.get("/products", { params });
+  // Antes: woo.get("/products", { params })
+  // Ahora: wooRequest(...) para no bloquear el backend si Woo falla temporalmente
+  const res = await wooRequest({
+    method: "GET",
+    url: "/products",
+    params
+  });
 
   let items = res.data.map(normalizeProduct);
 
@@ -337,7 +445,13 @@ async function listProducts(query = {}) {
 // SINGLE PRODUCT
 // --------------------
 async function getProductById(id) {
-  const res = await woo.get(`/products/${id}`);
+  // Antes: woo.get(`/products/${id}`)
+  // Ahora: wooRequest(...) con el mismo contrato de salida
+  const res = await wooRequest({
+    method: "GET",
+    url: `/products/${id}`
+  });
+
   return normalizeProduct(res.data);
 }
 
