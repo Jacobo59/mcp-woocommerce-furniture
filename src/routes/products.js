@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { listProducts } = require('../services/woocommerce');
+const { listProducts, getProductById } = require('../services/woocommerce');
 
+/**
+ * LIST PRODUCTS
+ */
 router.get('/list-products', async (req, res) => {
   try {
     const page = Number.parseInt(req.query.page, 10) || 1;
@@ -50,6 +53,46 @@ router.get('/list-products', async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: 'Failed to fetch products',
+    });
+  }
+});
+
+/**
+ * GET PRODUCT BY ID
+ */
+router.get('/get-product/:id', async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+
+    if (!id) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid product ID',
+      });
+    }
+
+    const product = await getProductById(id);
+
+    return res.json({
+      ok: true,
+      product,
+    });
+  } catch (error) {
+    console.error(
+      'Error in /tools/get-product/:id:',
+      error.response?.data || error.message
+    );
+
+    if (error.response?.status === 404) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Product not found',
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to fetch product',
     });
   }
 });
