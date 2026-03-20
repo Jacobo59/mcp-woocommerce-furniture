@@ -15,7 +15,7 @@ async function getProducts() {
   try {
     const response = await wooApi.get("/products", {
       params: {
-        per_page: 20
+        per_page: 5
       }
     });
 
