@@ -1,46 +1,27 @@
-import { createServer } from "node:http";
+import express, { Request, Response, NextFunction } from "express";
 import { env } from "./config/env";
-import { handleRpc } from "./mcp/handler";
-import { failure } from "./shared/jsonrpc";
+import { requireBearerToken } from "./shared/auth";
+import { mcpHandler } from "./mcp/handler";
+import { AppError, toErrorPayload } from "./shared/errors";
 
-const server = createServer(async (req, res) => {
-  if (req.method !== "POST") {
-    res.writeHead(405, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        error: "Method Not Allowed",
-      })
-    );
-    return;
-  }
+const app = express();
 
-  let body = "";
+app.use(express.json({ limit: "1mb" }));
 
-  req.on("data", (chunk) => {
-    body += chunk;
-  });
-
-  req.on("end", async () => {
-    try {
-      const request = JSON.parse(body);
-      const response = await handleRpc(request);
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(response));
-    } catch (error: any) {
-      const rpcError = failure(
-        null,
-        -32700,
-        "Parse error",
-        error?.message || error
-      );
-
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(rpcError));
-    }
-  });
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ ok: true, service: "wc-mcp-server" });
 });
 
-server.listen(env.PORT, () => {
-  console.log(`MCP WooCommerce server listening on port ${env.PORT}`);
+app.post("/mcp", requireBearerToken, mcpHandler);
+
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof AppError) {
+    return res.status(error.status).json(toErrorPayload(error));
+  }
+
+  return res.status(500).json(toErrorPayload(error));
+});
+
+app.listen(env.PORT, () => {
+  console.log(`MCP server listening on port ${env.PORT}`);
 });
