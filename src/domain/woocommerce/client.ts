@@ -1,60 +1,35 @@
+import axios from "axios";
 import { env } from "../../config/env";
-import { getBasicAuthHeader } from "../../shared/auth";
 import { AppError } from "../../shared/errors";
 
-const BASE_URL = `${env.WC_URL}/wp-json/wc/v3`;
-
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
-
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: getBasicAuthHeader(
-        env.WC_CONSUMER_KEY,
-        env.WC_CONSUMER_SECRET
-      ),
-      ...(options.headers || {}),
-    },
-  });
-
-  const text = await res.text();
-
-  let data: any;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    throw new AppError("Invalid JSON response from WooCommerce", 502, text);
+export const wooClient = axios.create({
+  baseURL: `${env.WOOCOMMERCE_URL.replace(/\/$/, "")}/wp-json/wc/v3`,
+  timeout: 15000,
+  auth: {
+    username: env.WOOCOMMERCE_CONSUMER_KEY,
+    password: env.WOOCOMMERCE_CONSUMER_SECRET
   }
+});
 
-  if (!res.ok) {
-    throw new AppError(
-      data?.message || "WooCommerce API error",
-      res.status,
-      data
-    );
+wooClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+
+    if (status === 401) {
+      throw new AppError("AUTH_ERROR", "WooCommerce authentication failed", 401, data);
+    }
+    if (status === 403) {
+      throw new AppError("FORBIDDEN", "WooCommerce access denied", 403, data);
+    }
+    if (status === 404) {
+      throw new AppError("NOT_FOUND", "WooCommerce resource not found", 404, data);
+    }
+    if (status === 429) {
+      throw new AppError("RATE_LIMITED", "WooCommerce rate limit reached", 429, data);
+    }
+
+    throw new AppError("UPSTREAM_ERROR", "WooCommerce request failed", 502, data);
   }
-
-  return data as T;
-}
-
-export const wcClient = {
-  get: <T>(endpoint: string) =>
-    request<T>(endpoint, { method: "GET" }),
-
-  post: <T>(endpoint: string, body?: unknown) =>
-    request<T>(endpoint, {
-      method: "POST",
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-
-  put: <T>(endpoint: string, body?: unknown) =>
-    request<T>(endpoint, {
-      method: "PUT",
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-};
+);
