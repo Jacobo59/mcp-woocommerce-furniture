@@ -2,9 +2,9 @@ const WooCommerceRestApi = require("@woocommerce/woocommerce-rest-api").default;
 const env = require("../config/env");
 
 const api = new WooCommerceRestApi({
-  url: env.WOOCOMMERCE_URL,
-  consumerKey: env.WOOCOMMERCE_CONSUMER_KEY,
-  consumerSecret: env.WOOCOMMERCE_CONSUMER_SECRET,
+  url: env.woo.url,
+  consumerKey: env.woo.key,
+  consumerSecret: env.woo.secret,
   version: "wc/v3",
 });
 
