@@ -54,12 +54,29 @@ router.get('/get-product/:id', async (req, res) => {
       product,
     });
   } catch (error) {
-    if (error.response?.status === 404) {
-      return res.status(404).json({ ok: false, error: 'Product not found' });
-    }
+  console.error('GET PRODUCT ERROR >>>');
+  console.error('status:', error.response?.status);
+  console.error('data:', error.response?.data);
+  console.error('message:', error.message);
 
-    return res.status(500).json({ ok: false, error: 'Failed to fetch product' });
+  if (error.response?.status === 404) {
+    return res.status(404).json({
+      ok: false,
+      error: 'Product not found',
+    });
   }
-});
+
+  if (error.response?.status === 401) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Unauthorized (WooCommerce)',
+    });
+  }
+
+  return res.status(500).json({
+    ok: false,
+    error: 'Failed to fetch product',
+  });
+}
 
 module.exports = router;
