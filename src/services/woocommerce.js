@@ -16,11 +16,22 @@ function stripHtml(html = "") {
 
 function decodeHtmlEntities(text = "") {
   return String(text)
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function normalizeText(text = "") {
+  return decodeHtmlEntities(text)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeCategory(category) {
@@ -85,27 +96,55 @@ async function listCategories({ page = 1, limit = 100, search } = {}) {
   };
 }
 
+async function getAllCategories() {
+  let page = 1;
+  const perPage = 100;
+  let allCategories = [];
+  let totalPages = 1;
+
+  do {
+    const response = await woo.get("/products/categories", {
+      params: {
+        page,
+        per_page: perPage,
+        hide_empty: false
+      }
+    });
+
+    allCategories = allCategories.concat(response.data);
+    totalPages = Number(response.headers["x-wp-totalpages"] || 1);
+    page += 1;
+  } while (page <= totalPages);
+
+  return allCategories.map(normalizeCategory);
+}
+
 async function findCategoryIdByName(name) {
   if (!name) return null;
 
-  const search = String(name).trim();
-  if (!search) return null;
+  const input = String(name).trim();
+  if (!input) return null;
 
-  const response = await woo.get("/products/categories", {
-    params: {
-      search,
-      per_page: 100,
-      hide_empty: false
-    }
-  });
-
-  const categories = response.data.map(normalizeCategory);
+  const normalizedInput = normalizeText(input);
+  const categories = await getAllCategories();
 
   const exactMatch = categories.find(
-    (cat) => cat.name.toLowerCase() === search.toLowerCase()
+    (category) => normalizeText(category.name) === normalizedInput
   );
 
-  return exactMatch ? exactMatch.id : null;
+  if (exactMatch) {
+    return exactMatch.id;
+  }
+
+  const containsMatch = categories.find((category) =>
+    normalizeText(category.name).includes(normalizedInput)
+  );
+
+  if (containsMatch) {
+    return containsMatch.id;
+  }
+
+  return null;
 }
 
 async function listProducts({ page = 1, limit = 10, search, category }) {
