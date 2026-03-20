@@ -8,6 +8,10 @@ router.get('/list-products', async (req, res) => {
     const limit = Number.parseInt(req.query.limit, 10) || 10;
     const search = (req.query.search || '').toString().trim();
 
+    const category = req.query.category
+      ? Number.parseInt(req.query.category, 10)
+      : null;
+
     if (page < 1) {
       return res.status(400).json({
         ok: false,
@@ -22,7 +26,14 @@ router.get('/list-products', async (req, res) => {
       });
     }
 
-    const result = await listProducts({ page, limit, search });
+    if (category !== null && Number.isNaN(category)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid category. Must be a number (category ID)',
+      });
+    }
+
+    const result = await listProducts({ page, limit, search, category });
 
     return res.json({
       ok: true,
