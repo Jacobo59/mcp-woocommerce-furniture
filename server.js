@@ -2,10 +2,13 @@ require("dotenv").config();
 
 const express = require("express");
 const { port } = require("./src/config/env");
+const productsRoutes = require("./src/routes/products");
 
 const app = express();
 
 app.use(express.json());
+
+app.use(productsRoutes);
 
 app.get("/health", (req, res) => {
   res.json({
