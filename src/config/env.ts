@@ -1,21 +1,15 @@
-type Env = {
-  PORT: number;
-  WC_URL: string;
-  WC_CONSUMER_KEY: string;
-  WC_CONSUMER_SECRET: string;
-};
+import dotenv from "dotenv";
+import { z } from "zod";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+dotenv.config();
 
-export const env: Env = {
-  PORT: Number(process.env.PORT ?? 3000),
-  WC_URL: requireEnv("WC_URL"),
-  WC_CONSUMER_KEY: requireEnv("WC_CONSUMER_KEY"),
-  WC_CONSUMER_SECRET: requireEnv("WC_CONSUMER_SECRET"),
-};
+const envSchema = z.object({
+  PORT: z.coerce.number().default(3000),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
+  MCP_AUTH_TOKEN: z.string().min(16),
+  WOOCOMMERCE_URL: z.string().url(),
+  WOOCOMMERCE_CONSUMER_KEY: z.string().min(10),
+  WOOCOMMERCE_CONSUMER_SECRET: z.string().min(10)
+});
+
+export const env = envSchema.parse(process.env);
