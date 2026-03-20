@@ -36,15 +36,32 @@ function decodeHtmlEntities(text = "") {
 }
 
 function normalizeProduct(product) {
+  const mainImage = product.images?.[0]?.src || null;
+
   return {
     id: product.id,
     name: decodeHtmlEntities(product.name || ""),
     slug: product.slug || "",
     permalink: product.permalink || "",
+
     price: product.price || "",
+    regular_price: product.regular_price || "",
+    sale_price: product.sale_price || "",
+    on_sale: Boolean(product.on_sale),
+
     total_sales: product.total_sales || 0,
-    categories: product.categories || [],
-    images: product.images || [],
+
+    stock_status: product.stock_status || "",
+
+    image: mainImage,
+
+    categories: Array.isArray(product.categories)
+      ? product.categories.map((c) => ({
+          id: c.id,
+          name: decodeHtmlEntities(c.name || ""),
+          slug: c.slug || "",
+        }))
+      : [],
   };
 }
 
