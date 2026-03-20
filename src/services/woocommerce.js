@@ -10,13 +10,13 @@ const wooApi = axios.create({
   timeout: 10000
 });
 
-// Obtener productos
 async function getProducts(limit = 5) {
-  const response = await wooApi.get("/products", {
-    params: {
-      per_page: limit
-    }
-  });
+  try {
+    const response = await wooApi.get("/products", {
+      params: {
+        per_page: limit
+      }
+    });
 
     return response.data;
   } catch (error) {
