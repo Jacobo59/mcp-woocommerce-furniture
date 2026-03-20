@@ -1,77 +1,74 @@
 const express = require('express');
-const router = express.Router();
+const {
+  listProducts,
+  getProductById,
+  listCategories
+} = require('../services/woocommerce');
 
-const { listProducts, getProductById } = require('../services/woocommerce');
+const router = express.Router();
 
 router.get('/list-products', async (req, res) => {
   try {
-    const page = Number.parseInt(req.query.page, 10) || 1;
-    const limit = Number.parseInt(req.query.limit, 10) || 10;
-    const search = (req.query.search || '').toString().trim();
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 10);
+    const search = req.query.search;
+    const category = req.query.category;
 
-    const category = req.query.category
-      ? Number.parseInt(req.query.category, 10)
-      : null;
-
-    if (page < 1) {
-      return res.status(400).json({ ok: false, error: 'Invalid page' });
-    }
-
-    if (limit < 1 || limit > 100) {
-      return res.status(400).json({ ok: false, error: 'Invalid limit' });
-    }
-
-    if (category !== null && Number.isNaN(category)) {
-      return res.status(400).json({ ok: false, error: 'Invalid category' });
-    }
-
-    const result = await listProducts({ page, limit, search, category });
+    const data = await listProducts({ page, limit, search, category });
 
     return res.json({
-      ok: true,
-      count: result.products.length,
-      pagination: result.pagination,
-      products: result.products,
+      success: true,
+      ...data
     });
   } catch (error) {
-    console.error('Error in /tools/list-products:', error.response?.data || error.message);
-    return res.status(500).json({
-      ok: false,
-      error: 'Failed to fetch products',
+    const status = error.response?.status || 500;
+
+    return res.status(status).json({
+      success: false,
+      message: 'Error fetching products',
+      error: error.response?.data || error.message
     });
   }
 });
 
 router.get('/get-product/:id', async (req, res) => {
   try {
-    const id = Number.parseInt(req.params.id, 10);
-
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Invalid product ID',
-      });
-    }
-
-    const product = await getProductById(id);
+    const product = await getProductById(req.params.id);
 
     return res.json({
-      ok: true,
-      product,
+      success: true,
+      item: product
     });
   } catch (error) {
-    console.error('Error in /tools/get-product/:id:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
 
-    if (error.response?.status === 404) {
-      return res.status(404).json({
-        ok: false,
-        error: 'Product not found',
-      });
-    }
+    return res.status(status).json({
+      success: false,
+      message: 'Error fetching product',
+      error: error.response?.data || error.message
+    });
+  }
+});
 
-    return res.status(500).json({
-      ok: false,
-      error: 'Failed to fetch product',
+router.get('/list-categories', async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 100);
+    const search = req.query.search;
+
+    const data = await listCategories({ page, limit, search });
+
+    return res.json({
+      success: true,
+      ...data
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+
+    return res.status(status).json({
+      success: false,
+      message: 'Error fetching categories',
+      error: error.response?.data || error.message
     });
   }
 });
