@@ -1,81 +1,65 @@
 const express = require("express");
+const router = express.Router();
+
 const {
   listProducts,
   getProductById,
-  listCategories
+  listCategories,
 } = require("../services/woocommerce");
 
-const router = express.Router();
-
+// LIST PRODUCTS
 router.get("/list-products", async (req, res) => {
   try {
-    const page = Number(req.query.page || 1);
-    const limit = Number(req.query.limit || 10);
-    const search = req.query.search;
-    const category = req.query.category;
-    const min_price = req.query.min_price;
-    const max_price = req.query.max_price;
+    const result = await listProducts(req.query);
 
-    const data = await listProducts({
-      page,
-      limit,
-      search,
-      category,
-      min_price,
-      max_price
-    });
-
-    return res.json({
+    res.json({
       ok: true,
-      ...data
+      ...result,
     });
   } catch (error) {
-    return res.status(error.status || error.response?.status || 500).json({
+    const status = error.statusCode || 500;
+
+    res.status(status).json({
       ok: false,
-      message: error.message || "Error fetching products",
-      error: error.response?.data || undefined
+      error: error.message || "Internal server error",
     });
   }
 });
 
+// GET PRODUCT
 router.get("/get-product/:id", async (req, res) => {
   try {
-    const item = await getProductById(req.params.id);
+    const product = await getProductById(req.params.id);
 
-    return res.json({
+    res.json({
       ok: true,
-      item
+      item: product,
     });
   } catch (error) {
-    return res.status(error.response?.status || 500).json({
+    const status = error.statusCode || 500;
+
+    res.status(status).json({
       ok: false,
-      message: "Error fetching product",
-      error: error.response?.data || error.message
+      error: error.message || "Internal server error",
     });
   }
 });
 
+// LIST CATEGORIES
 router.get("/list-categories", async (req, res) => {
   try {
-    const page = Number(req.query.page || 1);
-    const limit = Number(req.query.limit || 100);
-    const search = req.query.search;
+    const categories = await listCategories();
 
-    const data = await listCategories({
-      page,
-      limit,
-      search
-    });
-
-    return res.json({
+    res.json({
       ok: true,
-      ...data
+      items: categories,
     });
   } catch (error) {
-    return res.status(error.response?.status || 500).json({
+    const status = error.statusCode || 500;
+
+    res.status(status).json({
       ok: false,
-      message: "Error fetching categories",
-      error: error.response?.data || error.message
+      error: error.message || "Internal server error",
     });
   }
 });
