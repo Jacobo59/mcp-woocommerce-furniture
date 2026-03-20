@@ -10,11 +10,19 @@ const woo = axios.create({
   timeout: 15000,
 });
 
-async function listProducts({ page = 1, limit = 10 }) {
+function cleanHtml(text = '') {
+  return text
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function listProducts({ page = 1, limit = 10, search = '' }) {
   const response = await woo.get('/products', {
     params: {
       per_page: limit,
       page,
+      search: search || undefined,
     },
   });
 
@@ -26,10 +34,7 @@ async function listProducts({ page = 1, limit = 10 }) {
     name: product.name,
     price: product.price,
     stock: product.stock_quantity ?? null,
-    description: (product.description || '')
-      .replace(/<[^>]*>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim(),
+    description: cleanHtml(product.description),
   }));
 
   return {
