@@ -3,10 +3,6 @@ const { wcUrl, wcConsumerKey, wcConsumerSecret } = require('../config/env');
 
 const woo = axios.create({
   baseURL: `${wcUrl}/wp-json/wc/v3`,
-  auth: {
-    username: wcConsumerKey,
-    password: wcConsumerSecret,
-  },
   timeout: 15000,
 });
 
@@ -27,6 +23,13 @@ function normalizeProduct(product) {
   };
 }
 
+function authParams() {
+  return {
+    consumer_key: wcConsumerKey,
+    consumer_secret: wcConsumerSecret,
+  };
+}
+
 async function listProducts({ page = 1, limit = 10, search = '', category = null }) {
   const response = await woo.get('/products', {
     params: {
@@ -34,6 +37,7 @@ async function listProducts({ page = 1, limit = 10, search = '', category = null
       page,
       search: search || undefined,
       category: category || undefined,
+      ...authParams(),
     },
   });
 
@@ -54,7 +58,12 @@ async function listProducts({ page = 1, limit = 10, search = '', category = null
 }
 
 async function getProductById(id) {
-  const response = await woo.get(`/products/${id}`);
+  const response = await woo.get(`/products/${id}`, {
+    params: {
+      ...authParams(),
+    },
+  });
+
   return normalizeProduct(response.data);
 }
 
