@@ -10,7 +10,7 @@ function normalizeProduct(p) {
     name: p.name,
     price: p.price,
     stock: p.stock_quantity,
-    description: p.description
+    description: p.description?.replace(/<[^>]*>?/gm, "")
   };
 }
 
