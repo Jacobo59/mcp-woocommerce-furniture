@@ -205,8 +205,43 @@ async function resolveCategories(category) {
   return resolved.join(",");
 }
 
-async function listProducts({ page = 1, limit = 10, search, category }) {
+function parsePrice(value, fieldName) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const normalized = String(value).trim();
+
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    const error = new Error(`Invalid ${fieldName}: ${value}`);
+    error.status = 400;
+    throw error;
+  }
+
+  return normalized;
+}
+
+async function listProducts({
+  page = 1,
+  limit = 10,
+  search,
+  category,
+  min_price,
+  max_price
+}) {
   const resolvedCategory = await resolveCategories(category);
+  const parsedMinPrice = parsePrice(min_price, "min_price");
+  const parsedMaxPrice = parsePrice(max_price, "max_price");
+
+  if (
+    parsedMinPrice !== undefined &&
+    parsedMaxPrice !== undefined &&
+    Number(parsedMinPrice) > Number(parsedMaxPrice)
+  ) {
+    const error = new Error("min_price cannot be greater than max_price");
+    error.status = 400;
+    throw error;
+  }
 
   const params = {
     page,
@@ -219,6 +254,14 @@ async function listProducts({ page = 1, limit = 10, search, category }) {
 
   if (resolvedCategory) {
     params.category = resolvedCategory;
+  }
+
+  if (parsedMinPrice !== undefined) {
+    params.min_price = parsedMinPrice;
+  }
+
+  if (parsedMaxPrice !== undefined) {
+    params.max_price = parsedMaxPrice;
   }
 
   const response = await woo.get("/products", { params });
