@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { wcUrl, wcConsumerKey, wcConsumerSecret } = require('../config/env');
+const { woo } = require('../config/env');
 
 console.log('ENV DEBUG >>>', {
   wcUrl,
@@ -7,11 +7,11 @@ console.log('ENV DEBUG >>>', {
   wcConsumerSecret: wcConsumerSecret ? 'OK' : 'MISSING',
 });
 
-const woo = axios.create({
-  baseURL: `${wcUrl}/wp-json/wc/v3`,
+const wooClient = axios.create({
+  baseURL: `${woo.url}/wp-json/wc/v3`,
   auth: {
-    username: wcConsumerKey,
-    password: wcConsumerSecret,
+    username: woo.key,
+    password: woo.secret,
   },
   timeout: 15000,
 });
@@ -34,7 +34,7 @@ function normalizeProduct(product) {
 }
 
 async function listProducts({ page = 1, limit = 10, search = '', category = null }) {
-  const response = await woo.get('/products', {
+  const response = await wooClient.get('/products', {
     params: {
       per_page: limit,
       page,
@@ -60,7 +60,7 @@ async function listProducts({ page = 1, limit = 10, search = '', category = null
 }
 
 async function getProductById(id) {
-  const response = await woo.get(`/products/${id}`);
+  const response = await wooClient.get(`/products/${id}`);
   return normalizeProduct(response.data);
 }
 
