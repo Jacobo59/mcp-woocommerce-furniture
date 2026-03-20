@@ -13,6 +13,18 @@ router.get('/list-products', async (req, res) => {
       ? Number.parseInt(req.query.category, 10)
       : null;
 
+    if (page < 1) {
+      return res.status(400).json({ ok: false, error: 'Invalid page' });
+    }
+
+    if (limit < 1 || limit > 100) {
+      return res.status(400).json({ ok: false, error: 'Invalid limit' });
+    }
+
+    if (category !== null && Number.isNaN(category)) {
+      return res.status(400).json({ ok: false, error: 'Invalid category' });
+    }
+
     const result = await listProducts({ page, limit, search, category });
 
     return res.json({
@@ -22,7 +34,7 @@ router.get('/list-products', async (req, res) => {
       products: result.products,
     });
   } catch (error) {
-    console.error(error.message);
+    console.error('Error in /tools/list-products:', error.response?.data || error.message);
     return res.status(500).json({
       ok: false,
       error: 'Failed to fetch products',
@@ -34,6 +46,13 @@ router.get('/get-product/:id', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
 
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid product ID',
+      });
+    }
+
     const product = await getProductById(id);
 
     return res.json({
@@ -41,7 +60,14 @@ router.get('/get-product/:id', async (req, res) => {
       product,
     });
   } catch (error) {
-    console.error(error.message);
+    console.error('Error in /tools/get-product/:id:', error.response?.data || error.message);
+
+    if (error.response?.status === 404) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Product not found',
+      });
+    }
 
     return res.status(500).json({
       ok: false,
