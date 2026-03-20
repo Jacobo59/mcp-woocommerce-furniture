@@ -1,15 +1,23 @@
 {
-  "name": "mcp-backend",
-  "version": "1.0.1",
-  "main": "server.js",
-  "type": "commonjs",
+  "name": "mcp-woocommerce-furniture",
+  "version": "1.0.0",
+  "description": "MCP server for WooCommerce furniture store",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "dependencies": {
-    "@woocommerce/woocommerce-rest-api": "^1.0.1",
-    "axios": "^1.6.0",
-    "express": "^4.18.2",
-    "dotenv": "^16.4.5"
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
   }
 }
