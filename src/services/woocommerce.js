@@ -1,12 +1,6 @@
 const axios = require('axios');
 const { woo } = require('../config/env');
 
-console.log('ENV DEBUG >>>', {
-  wcUrl,
-  wcConsumerKey: wcConsumerKey ? 'OK' : 'MISSING',
-  wcConsumerSecret: wcConsumerSecret ? 'OK' : 'MISSING',
-});
-
 const wooClient = axios.create({
   baseURL: `${woo.url}/wp-json/wc/v3`,
   auth: {
