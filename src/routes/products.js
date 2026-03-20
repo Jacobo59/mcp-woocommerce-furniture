@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { listProducts, getProductById } = require('../services/woocommerce');
+
+const {
+  listProducts,
+  getProductById,
+} = require('../services/woocommerce');
 
 /**
  * LIST PRODUCTS
