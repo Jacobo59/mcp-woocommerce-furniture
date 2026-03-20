@@ -156,10 +156,7 @@ function normalizeProduct(product) {
           name: decodeHtmlEntities(cat.name),
           slug: cat.slug
         }))
-      : [],
-
-    short_description: stripHtml(product.short_description),
-    description: stripHtml(product.description)
+      : []
   };
 }
 
