@@ -8,6 +8,36 @@ const api = new WooCommerceRestApi({
   version: "wc/v3",
 });
 
+// 🔥 CACHE
+const CACHE_TTL = 60 * 1000; // 60s
+const cache = new Map();
+
+function getCacheKey(query) {
+  return JSON.stringify(query);
+}
+
+function getFromCache(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+
+  const isExpired = Date.now() > entry.expiry;
+  if (isExpired) {
+    cache.delete(key);
+    return null;
+  }
+
+  return entry.data;
+}
+
+function setCache(key, data) {
+  cache.set(key, {
+    data,
+    expiry: Date.now() + CACHE_TTL,
+  });
+}
+
+// ------------------------
+
 const ORDERBY_MAP = {
   price: "price",
   date: "date",
@@ -22,10 +52,6 @@ const ORDER_MAP = {
   desc: "desc",
 };
 
-function stripHtml(html = "") {
-  return String(html).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-}
-
 function decodeHtmlEntities(text = "") {
   return String(text)
     .replace(/&amp;/gi, "&")
@@ -36,8 +62,6 @@ function decodeHtmlEntities(text = "") {
 }
 
 function normalizeProduct(product) {
-  const mainImage = product.images?.[0]?.src || null;
-
   return {
     id: product.id,
     name: decodeHtmlEntities(product.name || ""),
@@ -53,7 +77,7 @@ function normalizeProduct(product) {
 
     stock_status: product.stock_status || "",
 
-    image: mainImage,
+    image: product.images?.[0]?.src || null,
 
     categories: Array.isArray(product.categories)
       ? product.categories.map((c) => ({
@@ -105,6 +129,11 @@ function fallbackSortByPopularity(items, order) {
 }
 
 async function listProducts(query = {}) {
+  const cacheKey = getCacheKey(query);
+
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
   const page = Number(query.page) || 1;
   const limit = Number(query.limit) || 10;
 
@@ -123,7 +152,7 @@ async function listProducts(query = {}) {
 
   let items = response.data.map(normalizeProduct);
 
-  // 🔥 Fallback inteligente si Woo falla con popularity
+  // fallback si Woo no ordena bien
   if (orderby === "popularity") {
     const isSorted = items.every((item, i, arr) => {
       if (i === 0) return true;
@@ -135,7 +164,7 @@ async function listProducts(query = {}) {
     }
   }
 
-  return {
+  const result = {
     page,
     limit,
     total: Number(response.headers["x-wp-total"] || 0),
@@ -146,6 +175,10 @@ async function listProducts(query = {}) {
     },
     items,
   };
+
+  setCache(cacheKey, result);
+
+  return result;
 }
 
 async function getProductById(id) {
