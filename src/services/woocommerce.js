@@ -1,30 +1,50 @@
-const axios = require("axios");
-const { woo } = require("../config/env");
+const axios = require('axios');
+const { wcUrl, wcConsumerKey, wcConsumerSecret } = require('../config/env');
 
-const wooApi = axios.create({
-  baseURL: `${woo.url}/wp-json/wc/v3`,
+const woo = axios.create({
+  baseURL: `${wcUrl}/wp-json/wc/v3`,
   auth: {
-    username: woo.key,
-    password: woo.secret
+    username: wcConsumerKey,
+    password: wcConsumerSecret,
   },
-  timeout: 10000
+  timeout: 15000,
 });
 
-async function getProducts(limit = 5) {
-  try {
-    const response = await wooApi.get("/products", {
-      params: {
-        per_page: limit
-      }
-    });
+async function listProducts({ page = 1, limit = 10 }) {
+  const response = await woo.get('/products', {
+    params: {
+      per_page: limit,
+      page,
+    },
+  });
 
-    return response.data;
-  } catch (error) {
-    console.error("WooCommerce error:", error.response?.data || error.message);
-    throw new Error("Error fetching products from WooCommerce");
-  }
+  const total = Number(response.headers['x-wp-total'] || 0);
+  const totalPages = Number(response.headers['x-wp-totalpages'] || 0);
+
+  const products = response.data.map((product) => ({
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    stock: product.stock_quantity ?? null,
+    description: (product.description || '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  }));
+
+  return {
+    products,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+  };
 }
 
 module.exports = {
-  getProducts
+  listProducts,
 };
