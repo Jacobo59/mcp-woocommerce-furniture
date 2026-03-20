@@ -1,289 +1,296 @@
-const axios = require("axios");
-const config = require("../config/env");
+const WooCommerceRestApi = require("@woocommerce/woocommerce-rest-api").default;
+const env = require("../config/env");
 
-const woo = axios.create({
-  baseURL: `${config.woo.url}/wp-json/wc/v3`,
-  auth: {
-    username: config.woo.key,
-    password: config.woo.secret
-  },
-  timeout: 15000
+const api = new WooCommerceRestApi({
+  url: env.WOOCOMMERCE_URL,
+  consumerKey: env.WOOCOMMERCE_CONSUMER_KEY,
+  consumerSecret: env.WOOCOMMERCE_CONSUMER_SECRET,
+  version: "wc/v3",
 });
 
+const ORDERBY_MAP = {
+  price: "price",
+  date: "date",
+  title: "title",
+  id: "id",
+  menu_order: "menu_order",
+};
+
+const ORDER_MAP = {
+  asc: "asc",
+  desc: "desc",
+};
+
 function stripHtml(html = "") {
-  return String(html).replace(/<[^>]*>/g, "").trim();
+  return String(html).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 
 function decodeHtmlEntities(text = "") {
   return String(text)
     .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
+    .replace(/&#039;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
 }
 
 function normalizeText(text = "") {
-  return decodeHtmlEntities(text)
-    .toLowerCase()
+  return decodeHtmlEntities(String(text))
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\band\b/gi, " and ")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isNumeric(value) {
-  return /^\d+$/.test(String(value));
-}
-
-function normalizeCategory(category) {
-  return {
-    id: category.id,
-    name: decodeHtmlEntities(category.name)
-  };
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeProduct(product) {
   return {
     id: product.id,
-    name: decodeHtmlEntities(product.name),
-    slug: product.slug,
-    permalink: product.permalink,
-    sku: product.sku,
-    price: product.price,
-    regular_price: product.regular_price,
-    sale_price: product.sale_price,
-    stock_status: product.stock_status,
-    featured: product.featured,
+    name: decodeHtmlEntities(product.name || ""),
+    slug: product.slug || "",
+    permalink: product.permalink || "",
+    type: product.type || "",
+    status: product.status || "",
+    featured: Boolean(product.featured),
+    catalog_visibility: product.catalog_visibility || "",
+    short_description: stripHtml(product.short_description || ""),
+    description: stripHtml(product.description || ""),
+    sku: product.sku || "",
+    price: product.price || "",
+    regular_price: product.regular_price || "",
+    sale_price: product.sale_price || "",
+    on_sale: Boolean(product.on_sale),
+    stock_status: product.stock_status || "",
+    stock_quantity: product.stock_quantity,
     categories: Array.isArray(product.categories)
-      ? product.categories.map((cat) => ({
-          id: cat.id,
-          name: decodeHtmlEntities(cat.name),
-          slug: cat.slug
+      ? product.categories.map((category) => ({
+          id: category.id,
+          name: decodeHtmlEntities(category.name || ""),
+          slug: category.slug || "",
         }))
       : [],
     images: Array.isArray(product.images)
-      ? product.images.map((img) => ({
-          id: img.id,
-          src: img.src,
-          alt: img.alt || ""
+      ? product.images.map((image) => ({
+          id: image.id,
+          src: image.src,
+          name: image.name || "",
+          alt: image.alt || "",
         }))
       : [],
-    short_description: stripHtml(product.short_description),
-    description: stripHtml(product.description)
   };
 }
 
-async function listCategories({ page = 1, limit = 100, search } = {}) {
-  const params = {
-    page,
-    per_page: limit,
-    hide_empty: false
+function normalizeCategory(category) {
+  return {
+    id: category.id,
+    name: decodeHtmlEntities(category.name || ""),
+    slug: category.slug || "",
+    count: category.count || 0,
+    parent: category.parent || 0,
+    description: stripHtml(category.description || ""),
   };
+}
 
-  if (search) {
-    params.search = search;
+function parsePositiveInt(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    const error = new Error(`Invalid value: ${value}`);
+    error.statusCode = 400;
+    throw error;
   }
 
-  const response = await woo.get("/products/categories", { params });
+  return parsed;
+}
 
-  return {
-    items: response.data.map(normalizeCategory),
-    pagination: {
-      page: Number(page),
-      limit: Number(limit),
-      total: Number(response.headers["x-wp-total"] || 0),
-      totalPages: Number(response.headers["x-wp-totalpages"] || 0)
-    }
-  };
+function parsePrice(value, fieldName) {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const parsed = Number(value);
+
+  if (Number.isNaN(parsed) || parsed < 0) {
+    const error = new Error(`${fieldName} must be a valid number >= 0`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return parsed;
+}
+
+function parseOrderby(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (!ORDERBY_MAP[normalized]) {
+    const error = new Error(
+      "orderby must be one of: price, date, title, id, menu_order"
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return ORDERBY_MAP[normalized];
+}
+
+function parseOrder(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (!ORDER_MAP[normalized]) {
+    const error = new Error("order must be one of: asc, desc");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return ORDER_MAP[normalized];
 }
 
 async function getAllCategories() {
+  const categories = [];
   let page = 1;
-  const perPage = 100;
-  let allCategories = [];
   let totalPages = 1;
 
   do {
-    const response = await woo.get("/products/categories", {
-      params: {
-        page,
-        per_page: perPage,
-        hide_empty: false
-      }
+    const response = await api.get("products/categories", {
+      per_page: 100,
+      page,
     });
 
-    allCategories = allCategories.concat(response.data);
+    categories.push(...response.data);
     totalPages = Number(response.headers["x-wp-totalpages"] || 1);
     page += 1;
   } while (page <= totalPages);
 
-  return allCategories.map(normalizeCategory);
+  return categories;
 }
 
-async function findCategoryIdByName(name) {
-  if (!name) return null;
+async function resolveCategoryIds(categoryInput) {
+  if (!categoryInput) return [];
 
-  const input = String(name).trim();
-  if (!input) return null;
+  const rawValues = Array.isArray(categoryInput)
+    ? categoryInput
+    : String(categoryInput)
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
 
-  const normalizedInput = normalizeText(input);
-  const categories = await getAllCategories();
+  if (!rawValues.length) return [];
 
-  const exactMatch = categories.find(
-    (category) => normalizeText(category.name) === normalizedInput
-  );
+  const allCategories = await getAllCategories();
+  const resolvedIds = new Set();
 
-  if (exactMatch) {
-    return exactMatch.id;
-  }
+  for (const rawValue of rawValues) {
+    if (/^\d+$/.test(rawValue)) {
+      resolvedIds.add(Number(rawValue));
+      continue;
+    }
 
-  const containsMatch = categories.find((category) =>
-    normalizeText(category.name).includes(normalizedInput)
-  );
+    const normalizedSearch = normalizeText(rawValue);
 
-  if (containsMatch) {
-    return containsMatch.id;
-  }
+    const exactMatch = allCategories.find(
+      (category) =>
+        normalizeText(category.name) === normalizedSearch ||
+        normalizeText(category.slug) === normalizedSearch
+    );
 
-  return null;
-}
+    if (exactMatch) {
+      resolvedIds.add(exactMatch.id);
+      continue;
+    }
 
-function parseCategoryInput(category) {
-  if (category === undefined || category === null || category === "") {
-    return [];
-  }
+    const partialMatches = allCategories.filter((category) => {
+      const normalizedName = normalizeText(category.name);
+      const normalizedSlug = normalizeText(category.slug);
 
-  if (Array.isArray(category)) {
-    return category
-      .flatMap((item) => String(item).split(","))
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
+      return (
+        normalizedName.includes(normalizedSearch) ||
+        normalizedSlug.includes(normalizedSearch) ||
+        normalizedSearch.includes(normalizedName)
+      );
+    });
 
-  return String(category)
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-async function resolveSingleCategory(category) {
-  if (isNumeric(category)) {
-    return String(Number(category));
-  }
-
-  const resolvedId = await findCategoryIdByName(category);
-
-  if (!resolvedId) {
-    const error = new Error(`Category not found: ${category}`);
-    error.status = 404;
-    throw error;
-  }
-
-  return String(resolvedId);
-}
-
-async function resolveCategories(category) {
-  const categoryList = parseCategoryInput(category);
-
-  if (!categoryList.length) {
-    return undefined;
-  }
-
-  const resolved = [];
-
-  for (const item of categoryList) {
-    const resolvedId = await resolveSingleCategory(item);
-
-    if (!resolved.includes(resolvedId)) {
-      resolved.push(resolvedId);
+    for (const match of partialMatches) {
+      resolvedIds.add(match.id);
     }
   }
 
-  return resolved.join(",");
+  return Array.from(resolvedIds);
 }
 
-function parsePrice(value, fieldName) {
-  if (value === undefined || value === null || value === "") {
-    return undefined;
-  }
+async function listProducts(query = {}) {
+  const page = parsePositiveInt(query.page, 1);
+  const limit = parsePositiveInt(query.limit, 10);
+  const search = query.search ? String(query.search).trim() : undefined;
 
-  const normalized = String(value).trim();
-
-  if (!/^\d+(\.\d+)?$/.test(normalized)) {
-    const error = new Error(`Invalid ${fieldName}: ${value}`);
-    error.status = 400;
-    throw error;
-  }
-
-  return normalized;
-}
-
-async function listProducts({
-  page = 1,
-  limit = 10,
-  search,
-  category,
-  min_price,
-  max_price
-}) {
-  const resolvedCategory = await resolveCategories(category);
-  const parsedMinPrice = parsePrice(min_price, "min_price");
-  const parsedMaxPrice = parsePrice(max_price, "max_price");
+  const minPrice = parsePrice(query.min_price, "min_price");
+  const maxPrice = parsePrice(query.max_price, "max_price");
 
   if (
-    parsedMinPrice !== undefined &&
-    parsedMaxPrice !== undefined &&
-    Number(parsedMinPrice) > Number(parsedMaxPrice)
+    minPrice !== undefined &&
+    maxPrice !== undefined &&
+    minPrice > maxPrice
   ) {
     const error = new Error("min_price cannot be greater than max_price");
-    error.status = 400;
+    error.statusCode = 400;
     throw error;
   }
+
+  const orderby = parseOrderby(query.orderby);
+  const order = parseOrder(query.order);
+
+  const categoryIds = await resolveCategoryIds(query.category);
 
   const params = {
     page,
-    per_page: limit
+    per_page: limit,
   };
 
-  if (search) {
-    params.search = search;
-  }
+  if (search) params.search = search;
+  if (categoryIds.length > 0) params.category = categoryIds.join(",");
+  if (minPrice !== undefined) params.min_price = String(minPrice);
+  if (maxPrice !== undefined) params.max_price = String(maxPrice);
+  if (orderby) params.orderby = orderby;
+  if (order) params.order = order;
 
-  if (resolvedCategory) {
-    params.category = resolvedCategory;
-  }
-
-  if (parsedMinPrice !== undefined) {
-    params.min_price = parsedMinPrice;
-  }
-
-  if (parsedMaxPrice !== undefined) {
-    params.max_price = parsedMaxPrice;
-  }
-
-  const response = await woo.get("/products", { params });
+  const response = await api.get("products", params);
 
   return {
+    page,
+    limit,
+    total: Number(response.headers["x-wp-total"] || 0),
+    total_pages: Number(response.headers["x-wp-totalpages"] || 0),
+    filters: {
+      search: search || null,
+      category_ids: categoryIds,
+      min_price: minPrice ?? null,
+      max_price: maxPrice ?? null,
+      orderby: orderby || null,
+      order: order || null,
+    },
     items: response.data.map(normalizeProduct),
-    pagination: {
-      page: Number(page),
-      limit: Number(limit),
-      total: Number(response.headers["x-wp-total"] || 0),
-      totalPages: Number(response.headers["x-wp-totalpages"] || 0)
-    }
   };
 }
 
 async function getProductById(id) {
-  const response = await woo.get(`/products/${id}`);
+  const productId = parsePositiveInt(id);
+  const response = await api.get(`products/${productId}`);
   return normalizeProduct(response.data);
+}
+
+async function listCategories() {
+  const categories = await getAllCategories();
+  return categories.map(normalizeCategory);
 }
 
 module.exports = {
   listProducts,
   getProductById,
-  listCategories
+  listCategories,
 };
