@@ -1,9 +1,9 @@
 require("dotenv").config();
 
 const express = require("express");
+const { port } = require("./src/config/env");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -15,6 +15,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`MCP escuchando en puerto ${PORT}`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`MCP escuchando en puerto ${port}`);
 });
