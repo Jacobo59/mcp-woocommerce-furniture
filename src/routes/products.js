@@ -2,35 +2,17 @@ const express = require("express");
 const {
   listProducts,
   getProductById,
-  listCategories,
-  findCategoryIdByName
+  listCategories
 } = require("../services/woocommerce");
 
 const router = express.Router();
-
-function isNumeric(value) {
-  return /^\d+$/.test(String(value));
-}
 
 router.get("/list-products", async (req, res) => {
   try {
     const page = Number(req.query.page || 1);
     const limit = Number(req.query.limit || 10);
     const search = req.query.search;
-    let category = req.query.category;
-
-    if (category && !isNumeric(category)) {
-      const resolvedCategoryId = await findCategoryIdByName(category);
-
-      if (!resolvedCategoryId) {
-        return res.status(404).json({
-          ok: false,
-          message: `Category not found: ${category}`
-        });
-      }
-
-      category = resolvedCategoryId;
-    }
+    const category = req.query.category;
 
     const data = await listProducts({
       page,
@@ -44,10 +26,10 @@ router.get("/list-products", async (req, res) => {
       ...data
     });
   } catch (error) {
-    return res.status(error.response?.status || 500).json({
+    return res.status(error.status || error.response?.status || 500).json({
       ok: false,
-      message: "Error fetching products",
-      error: error.response?.data || error.message
+      message: error.message || "Error fetching products",
+      error: error.response?.data || undefined
     });
   }
 });
