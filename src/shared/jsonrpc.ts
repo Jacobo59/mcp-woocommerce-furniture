@@ -1,43 +1,35 @@
-export type JsonRpcRequest = {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  method: string;
-  params?: any;
-};
+import { z } from "zod";
 
-export type JsonRpcSuccess = {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  result: any;
-};
+export const jsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  method: z.string(),
+  params: z.unknown().optional()
+});
 
-export type JsonRpcError = {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  error: {
-    code: number;
-    message: string;
-    data?: any;
-  };
-};
+export type JsonRpcRequest = z.infer<typeof jsonRpcRequestSchema>;
 
-export function success(id: JsonRpcRequest["id"], result: any): JsonRpcSuccess {
+export function makeJsonRpcResult(id: string | number | null | undefined, result: unknown) {
   return {
     jsonrpc: "2.0",
-    id,
-    result,
+    id: id ?? null,
+    result
   };
 }
 
-export function failure(
-  id: JsonRpcRequest["id"],
+export function makeJsonRpcError(
+  id: string | number | null | undefined,
   code: number,
   message: string,
-  data?: any
-): JsonRpcError {
+  data?: unknown
+) {
   return {
     jsonrpc: "2.0",
-    id,
-    error: { code, message, data },
+    id: id ?? null,
+    error: {
+      code,
+      message,
+      data
+    }
   };
 }
