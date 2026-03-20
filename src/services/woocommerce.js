@@ -34,6 +34,10 @@ function normalizeText(text = "") {
     .trim();
 }
 
+function isNumeric(value) {
+  return /^\d+$/.test(String(value));
+}
+
 function normalizeCategory(category) {
   return {
     id: category.id,
@@ -147,7 +151,27 @@ async function findCategoryIdByName(name) {
   return null;
 }
 
+async function resolveCategory(category) {
+  if (!category) return undefined;
+
+  if (isNumeric(category)) {
+    return Number(category);
+  }
+
+  const resolvedId = await findCategoryIdByName(category);
+
+  if (!resolvedId) {
+    const error = new Error(`Category not found: ${category}`);
+    error.status = 404;
+    throw error;
+  }
+
+  return resolvedId;
+}
+
 async function listProducts({ page = 1, limit = 10, search, category }) {
+  const resolvedCategory = await resolveCategory(category);
+
   const params = {
     page,
     per_page: limit
@@ -157,8 +181,8 @@ async function listProducts({ page = 1, limit = 10, search, category }) {
     params.search = search;
   }
 
-  if (category) {
-    params.category = category;
+  if (resolvedCategory) {
+    params.category = resolvedCategory;
   }
 
   const response = await woo.get("/products", { params });
@@ -182,6 +206,5 @@ async function getProductById(id) {
 module.exports = {
   listProducts,
   getProductById,
-  listCategories,
-  findCategoryIdByName
+  listCategories
 };
