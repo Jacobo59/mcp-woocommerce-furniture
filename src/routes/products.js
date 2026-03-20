@@ -16,7 +16,8 @@ function normalizeProduct(p) {
 
 router.get("/tools/list-products", async (req, res) => {
   try {
-    const products = await getProducts();
+    const limit = parseInt(req.query.limit) || 5;
+    const products = await getProducts(limit);
 
     const normalized = products.map(normalizeProduct);
 
