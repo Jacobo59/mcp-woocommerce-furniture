@@ -11,13 +11,12 @@ const wooApi = axios.create({
 });
 
 // Obtener productos
-async function getProducts() {
-  try {
-    const response = await wooApi.get("/products", {
-      params: {
-        per_page: 5
-      }
-    });
+async function getProducts(limit = 5) {
+  const response = await wooApi.get("/products", {
+    params: {
+      per_page: limit
+    }
+  });
 
     return response.data;
   } catch (error) {
